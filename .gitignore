@@ -7,3 +7,4 @@ gradlew.bat
 matrixlib/build
 matrixlib/.gradle
 native/build
+benchmarks/build

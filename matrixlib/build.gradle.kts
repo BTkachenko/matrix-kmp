@@ -1,97 +1,73 @@
+import java.io.File
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 
 plugins {
     kotlin("multiplatform")
 }
 
-// === Native build via CMake (JNI + libmatrix) ===
 val nativeBuildDir = rootProject.layout.projectDirectory.dir("native/build")
 val nativeLibDir = nativeBuildDir.dir("lib").asFile
 
 val configureNative by tasks.registering(Exec::class) {
     workingDir = rootProject.projectDir
-    commandLine("cmake", "-S", ".", "-B", "native/build")
+    commandLine("cmake", "-S", ".", "-B", "native/build", "-DCMAKE_BUILD_TYPE=Release")
 }
 
 val buildNative by tasks.registering(Exec::class) {
     dependsOn(configureNative)
     workingDir = rootProject.projectDir
-    commandLine("cmake", "--build", "native/build")
+    commandLine("cmake", "--build", "native/build", "--config", "Release")
 }
 
 kotlin {
-    // JVM (JNI)
     jvm()
-
-    // Linux K/N (cinterop do C API)
     linuxX64()
+    macosX64()
+    macosArm64()
+    mingwX64()
 
     sourceSets {
         val commonMain by getting
-        val commonTest by getting {
-            dependencies { implementation(kotlin("test")) }
-        }
-
+        val commonTest by getting { dependencies { implementation(kotlin("test")) } }
         val jvmMain by getting
-        val jvmTest by getting {
-            dependencies { implementation(kotlin("test")) }
-        }
+        val jvmTest by getting { dependencies { implementation(kotlin("test")) } }
+        val nativeMain by creating { dependsOn(commonMain) }
+        val nativeTest by creating { dependsOn(commonTest) }
 
-        // Trzymamy natywne źródła w linuxX64Main / linuxX64Test
-        val linuxX64Main by getting
-        val linuxX64Test by getting {
-            dependencies { implementation(kotlin("test")) }
-        }
-    }
-
-    // >>> KLUCZ: cinterop przypięty do linuxX64/main <<<
-    linuxX64 {
-        compilations.getByName("main") {
-            cinterops {
-                create("matrix") {
-                    // Def plik: matrix.def
-                    defFile(project.file("src/nativeInterop/cinterop/matrix.def"))
-                    // Nagłówki C API
-                    includeDirs(project.rootProject.file("native/include"))
-                }
-            }
-        }
-
-        // Link do libmatrix.so (z CMake)
-        val libDir = project.rootProject.file("native/build/lib").absolutePath
-        binaries.all {
-            linkerOpts("-L$libDir", "-lmatrix")
-            // Zawsze zbuduj CMake przed linkiem K/N
-            linkTaskProvider.configure { dependsOn(buildNative) }
+        targets.withType<KotlinNativeTarget> {
+            compilations["main"].defaultSourceSet.dependsOn(nativeMain)
+            compilations["test"].defaultSourceSet.dependsOn(nativeTest)
         }
     }
 }
 
-// Ustawienia środowiska dla testów JVM (JNI) i K/N
+kotlin.targets.withType<KotlinNativeTarget>().configureEach {
+    compilations.getByName("main") {
+        cinterops.create("matrix") {
+            defFile(project.file("src/nativeInterop/cinterop/matrix.def"))
+            includeDirs(project.rootProject.file("native/include"))
+        }
+    }
+    val libDir = project.rootProject.file("native/build").resolve("lib").absolutePath
+    binaries.all {
+        linkerOpts("-L$libDir", "-lmatrix")
+        linkTaskProvider.configure { dependsOn(buildNative) }
+    }
+}
+
 tasks.withType<Test>().configureEach {
     dependsOn(buildNative)
-
-    // JVM: ścieżka do natywnych .so
-    systemProperty(
-        "java.library.path",
-        nativeLibDir.absolutePath
-    )
-
-    // Domyślny libdir (można nadpisać -Ddev.demo.matrix.libdir=...)
-    systemProperty(
-        "dev.demo.matrix.libdir",
-        System.getProperty("dev.demo.matrix.libdir") ?: nativeLibDir.absolutePath
-    )
-
-    // Dla loaderów natywnych
-    environment("PATH", nativeLibDir.absolutePath + File.pathSeparator + (environment["PATH"] ?: ""))
+    systemProperty("java.library.path", nativeLibDir.absolutePath)
+    environment("PATH", nativeLibDir.absolutePath + File.pathSeparator + (System.getenv("PATH") ?: ""))
     environment("LD_LIBRARY_PATH", nativeLibDir.absolutePath)
     environment("DYLD_LIBRARY_PATH", nativeLibDir.absolutePath)
+    systemProperty("dev.demo.matrix.libdir", nativeLibDir.absolutePath)
 }
 
 tasks.withType<KotlinNativeTest>().configureEach {
     dependsOn(buildNative)
-    environment("PATH", nativeLibDir.absolutePath + File.pathSeparator + (environment["PATH"] ?: ""))
     environment("LD_LIBRARY_PATH", nativeLibDir.absolutePath)
     environment("DYLD_LIBRARY_PATH", nativeLibDir.absolutePath)
+    environment("PATH", nativeLibDir.absolutePath + File.pathSeparator + (System.getenv("PATH") ?: ""))
 }
