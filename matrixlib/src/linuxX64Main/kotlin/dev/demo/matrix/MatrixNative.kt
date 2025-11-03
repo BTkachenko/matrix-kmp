@@ -4,6 +4,10 @@ import cnames.structs.matrix_handle_t
 import kotlinx.cinterop.*
 import matrix.*   // mx_create/mx_copy_out/mx_multiply/mx_rows/mx_cols + MX_ERR_*
 
+/**
+ * Linux x64 implementation that bridges to the C API exposed by libmatrix via
+ * Kotlin/Native interop.
+ */
 @OptIn(ExperimentalForeignApi::class)
 actual class Matrix actual constructor(
     actual val rows: Int,
@@ -12,6 +16,7 @@ actual class Matrix actual constructor(
 ) : AutoCloseable {
 
     init {
+        // Validate eagerly before calling into the native layer.
         require(rows > 0 && cols > 0) { "rows and cols must be > 0" }
         require(data.size == rows * cols) {
             "data length mismatch: ${data.size} != ${rows * cols}"
@@ -21,7 +26,8 @@ actual class Matrix actual constructor(
     private var handle: CPointer<matrix_handle_t>? = memScoped {
         val out = alloc<CPointerVar<matrix_handle_t>>()
         data.usePinned { pinned ->
-            // size_t -> ULong na Linux x64
+            // size_t is represented as ULong on Linux x64, so cast carefully to
+            // avoid truncation.
             val err = mx_create(rows.toULong(), cols.toULong(), pinned.addressOf(0), out.ptr)
             if (err != MX_OK) throw mapErr(err)
         }
@@ -67,6 +73,7 @@ actual class Matrix actual constructor(
         handle = null
     }
 
+    // Map native error codes into idiomatic Kotlin exceptions.
     private fun mapErr(code: Int): RuntimeException {
         val msg = mx_strerror(code)?.toKString() ?: "native error $code"
         return when (code) {

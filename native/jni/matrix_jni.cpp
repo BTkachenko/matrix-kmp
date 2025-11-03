@@ -8,10 +8,11 @@ static void throwJava(JNIEnv* env, const char* className, const char* msg) {
     env->ThrowNew(cls, msg);
 }
 
+// Map native error codes to the closest matching Java exception type.
 static void throwFromErr(JNIEnv* env, int err) {
     switch (err) {
         case MX_ERR_SHAPE:
-            // JVM test oczekuje IllegalArgumentException dla błędu kształtu.
+            // The JVM tests expect IllegalArgumentException for shape issues.
             throwJava(env, "java/lang/IllegalArgumentException", mx_strerror(err));
             break;
         case MX_ERR_NULL:
@@ -27,6 +28,8 @@ static void throwFromErr(JNIEnv* env, int err) {
     }
 }
 
+// JNI entry point that constructs a native matrix and returns the opaque handle
+// as a long to Kotlin/JVM callers.
 extern "C" JNIEXPORT jlong JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nCreate(JNIEnv* env, jclass,
                                               jint rows, jint cols, jdoubleArray data) {
@@ -46,11 +49,13 @@ Java_dev_demo_matrix_jvm_NativeLoader_nCreate(JNIEnv* env, jclass,
     return reinterpret_cast<jlong>(h);
 }
 
+// JNI entry point that releases a previously created handle.
 extern "C" JNIEXPORT void JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nDestroy(JNIEnv*, jclass, jlong handle) {
     mx_destroy(reinterpret_cast<matrix_handle_t*>(handle));
 }
 
+// JNI entry point that multiplies two handles and returns the product handle.
 extern "C" JNIEXPORT jlong JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nMultiply(JNIEnv* env, jclass, jlong a, jlong b) {
     matrix_handle_t* out = nullptr;
@@ -60,16 +65,19 @@ Java_dev_demo_matrix_jvm_NativeLoader_nMultiply(JNIEnv* env, jclass, jlong a, jl
     return reinterpret_cast<jlong>(out);
 }
 
+// JNI entry point that fetches the row count from a handle.
 extern "C" JNIEXPORT jint JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nRows(JNIEnv*, jclass, jlong h) {
     return (jint) mx_rows(reinterpret_cast<matrix_handle_t*>(h));
 }
 
+// JNI entry point that fetches the column count from a handle.
 extern "C" JNIEXPORT jint JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nCols(JNIEnv*, jclass, jlong h) {
     return (jint) mx_cols(reinterpret_cast<matrix_handle_t*>(h));
 }
 
+// JNI entry point that copies the matrix contents into a JVM-managed array.
 extern "C" JNIEXPORT void JNICALL
 Java_dev_demo_matrix_jvm_NativeLoader_nCopyOut(JNIEnv* env, jclass, jlong h, jdoubleArray out) {
     if (!out) { throwJava(env, "java/lang/NullPointerException", "out is null"); return; }

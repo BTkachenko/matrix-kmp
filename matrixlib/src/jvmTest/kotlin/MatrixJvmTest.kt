@@ -6,6 +6,7 @@ class MatrixJvmTest {
 
     @Test
     fun multiply2x3_3x2() {
+        // Arrange two matrices whose product is easy to verify by hand.
         val a = Matrix(2, 3, doubleArrayOf(
             1.0, 2.0, 3.0,
             4.0, 5.0, 6.0
@@ -26,6 +27,7 @@ class MatrixJvmTest {
 
     @Test
     fun shapeMismatchThrows() {
+        // Multiplying 2x2 by 3x1 should fail due to incompatible dimensions.
         val a = Matrix(2, 2, doubleArrayOf(1.0, 2.0, 3.0, 4.0))
         val b = Matrix(3, 1, doubleArrayOf(5.0, 6.0, 7.0))
         assertFailsWith<IllegalArgumentException> { a.multiply(b) }
@@ -34,6 +36,7 @@ class MatrixJvmTest {
 
     @Test
     fun closedSafety() {
+        // Closing the matrix should prevent further use of the handle.
         val a = Matrix(1, 1, doubleArrayOf(42.0))
         a.close()
         assertTrue(a.isClosed)

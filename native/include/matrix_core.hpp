@@ -14,30 +14,42 @@
 
 namespace matrix {
 
+// Exception thrown when matrix dimensions are incompatible for the requested
+// operation (for example, multiplication of mismatched shapes).
 class shape_error : public std::runtime_error {
 public:
     explicit shape_error(const char* msg) : std::runtime_error(msg) {}
 };
 
+// Dense, row-major matrix of double-precision values. The class owns the
+// backing storage and provides a high-performance general matrix
+// multiplication (GEMM) routine for row-major inputs.
 class DenseMatrix {
 public:
+    // Construct an empty matrix with the given shape.
     DenseMatrix(std::size_t rows, std::size_t cols)
         : rows_(rows), cols_(cols), data_(rows * cols) {
         if (rows_ == 0 || cols_ == 0) throw shape_error("rows and cols must be > 0");
     }
 
+    // Construct a matrix from a row-major buffer.
     DenseMatrix(std::size_t rows, std::size_t cols, const double* src)
         : DenseMatrix(rows, cols) {
         if (!src) throw std::invalid_argument("src is null");
         std::copy(src, src + rows * cols, data_.begin());
     }
 
+    // Number of rows in the matrix.
     std::size_t rows() const noexcept { return rows_; }
+    // Number of columns in the matrix.
     std::size_t cols() const noexcept { return cols_; }
+    // Pointer to the underlying data (read-only view).
     const double* data() const noexcept { return data_.data(); }
+    // Pointer to the underlying data (mutable view).
     double* data() noexcept { return data_.data(); }
 
-    // High-performance GEMM: C = A * B (row-major).
+    // High-performance GEMM: C = A * B (row-major). The result is returned as a
+    // newly allocated matrix so the operands remain unchanged.
     std::unique_ptr<DenseMatrix> multiply(const DenseMatrix& rhs) const {
         if (cols_ != rhs.rows_) throw shape_error("incompatible shapes for multiplication");
 
@@ -128,8 +140,10 @@ public:
     }
 
 private:
+    // Dimensions of the matrix in row-major order.
     std::size_t rows_;
     std::size_t cols_;
+    // Contiguous storage for rows_ * cols_ double values.
     std::vector<double> data_;
 };
 

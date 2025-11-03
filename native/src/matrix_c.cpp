@@ -10,10 +10,12 @@
 using matrix::DenseMatrix;
 using matrix::shape_error;
 
+// Concrete representation of the opaque matrix handle used by the C API.
 struct matrix_handle_t {
     std::unique_ptr<DenseMatrix> matrix;
 };
 
+// Translate a numeric error code to its textual form.
 const char* mx_strerror(int code) {
     switch (code) {
     case MX_OK: return "OK";
@@ -25,6 +27,8 @@ const char* mx_strerror(int code) {
     }
 }
 
+// Ensure the provided dimensions are valid and do not overflow size_t when
+// multiplied.
 static int validate_dimensions(std::size_t rows, std::size_t cols) {
     if (rows == 0 || cols == 0) {
         return MX_ERR_SHAPE;
@@ -37,6 +41,7 @@ static int validate_dimensions(std::size_t rows, std::size_t cols) {
     return MX_OK;
 }
 
+// Create a handle that owns a DenseMatrix copy of the provided buffer.
 int mx_create(size_t rows, size_t cols, const double* data, matrix_handle_t** out) {
     if (!out) {
         return MX_ERR_NULL;
@@ -63,10 +68,12 @@ int mx_create(size_t rows, size_t cols, const double* data, matrix_handle_t** ou
     }
 }
 
+// Release a handle previously allocated with mx_create or mx_multiply.
 void mx_destroy(matrix_handle_t* h) {
     delete h;
 }
 
+// Multiply two matrix handles and return the result as a new handle.
 int mx_multiply(const matrix_handle_t* a, const matrix_handle_t* b, matrix_handle_t** out) {
     if (!out) {
         return MX_ERR_NULL;
@@ -91,6 +98,7 @@ int mx_multiply(const matrix_handle_t* a, const matrix_handle_t* b, matrix_handl
     }
 }
 
+// Read the number of rows stored in a handle, returning 0 for invalid inputs.
 size_t mx_rows(const matrix_handle_t* h) {
     if (!h || !h->matrix) {
         return 0;
@@ -98,6 +106,7 @@ size_t mx_rows(const matrix_handle_t* h) {
     return h->matrix->rows();
 }
 
+// Read the number of columns stored in a handle, returning 0 for invalid inputs.
 size_t mx_cols(const matrix_handle_t* h) {
     if (!h || !h->matrix) {
         return 0;
@@ -105,6 +114,7 @@ size_t mx_cols(const matrix_handle_t* h) {
     return h->matrix->cols();
 }
 
+// Copy matrix contents into caller-supplied memory.
 int mx_copy_out(const matrix_handle_t* h, double* out, size_t out_len) {
     if (!h || !h->matrix) {
         return MX_ERR_STATE;
