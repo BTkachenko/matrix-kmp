@@ -1,0 +1,2 @@
+headers = ../../../native/include/matrix_c.h
+linkerOpts = -lmatrix
