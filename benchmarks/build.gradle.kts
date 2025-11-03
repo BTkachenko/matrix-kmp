@@ -1,7 +1,7 @@
 import java.io.File
 
 plugins {
-    kotlin("jvm")        // ← bez wersji
+    kotlin("jvm")       
     application
 }
 

@@ -19,7 +19,7 @@ class MatrixJvmTest {
         val c = a.multiply(b)
         val arr = c.toArray()
 
-        // oczekiwane: [58, 64; 139, 154]
+        // Expected: [58, 64; 139, 154]
         assertContentEquals(doubleArrayOf(58.0, 64.0, 139.0, 154.0), arr)
         a.close(); b.close(); c.close()
     }

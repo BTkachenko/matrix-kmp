@@ -24,7 +24,7 @@ private fun parseArgs(args: Array<String>): Params {
     return Params(sizes, iterations, warmups, impl)
 }
 
-// Prosta, cache-friendly implementacja O(n^3) w czystym Kotlinie (row-major).
+// Simple, cache-friendly implementation O(n^3) in Kotlinie (row-major).
 private fun mulKotlin(a: DoubleArray, b: DoubleArray, n: Int): DoubleArray {
     val c = DoubleArray(n * n)
     val nLong = n
@@ -71,7 +71,7 @@ fun main(args: Array<String>) {
     for (n in p.sizes) {
         println("\n--- n=$n ---")
 
-        // Generujemy te same dane do obu implementacji
+        // Generate same data for both
         fun randomMatrix(n: Int): DoubleArray {
             val out = DoubleArray(n * n)
             for (i in out.indices) out[i] = rnd.nextDouble() * 2.0 - 1.0
@@ -80,7 +80,7 @@ fun main(args: Array<String>) {
         val aArr = randomMatrix(n)
         val bArr = randomMatrix(n)
 
-        // Sanity check na małej macierzy (np. 64) – jednorazowo
+        // Sanity check for small matrix
         if (n == p.sizes.first() && (p.impl == "both")) {
             val testN = minOf(64, n)
             val aT = aArr.copyOf(testN * testN)
@@ -96,7 +96,7 @@ fun main(args: Array<String>) {
         }
 
         if (p.impl == "native" || p.impl == "both") {
-            // Prealokacja obiektów, żeby nie liczyć ich kosztu w pętli
+            // Prealocation
             val A = Matrix(n, n, aArr)
             val B = Matrix(n, n, bArr)
             try {
@@ -105,13 +105,13 @@ fun main(args: Array<String>) {
                     Matrix(n, n, aArr).use { _ -> } // drobny ruch JVM/JIT
                     A.multiply(B).use { C -> checksum10(C.toArray()) }
                 }
-                // Pomiary
+                // Time measure
                 val timesMs = DoubleArray(p.iterations)
                 var blackhole = 0.0
                 repeat(p.iterations) { idx ->
                     val t = measureNanoTime {
                         A.multiply(B).use { C ->
-                            // konsumujemy wynik
+                            
                             blackhole += checksum10(C.toArray())
                         }
                     }
@@ -146,7 +146,6 @@ fun main(args: Array<String>) {
     println("\nDone.")
 }
 
-// Ułatwienie .use dla Matrix (AutoCloseable)
 private inline fun <T : AutoCloseable, R> T.use(block: (T) -> R): R {
     var thrown: Throwable? = null
     try {
