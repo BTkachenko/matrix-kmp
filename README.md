@@ -1,67 +1,206 @@
 # Matrix KMP Demo
 
-A minimal Kotlin Multiplatform wrapper around a native C++ dense matrix multiplication core.
+Kotlin Multiplatform wrapper over a native C++ dense matrix core (cache-friendly tiled `O(n^3)` multiply with aggressive compiler optimizations). JVM uses JNI; Kotlin/Native uses cinterop.
 
-## Layout
+---
 
-- `native/` – C++ sources, public C header, JNI shim, and CMake project.
-- `matrixlib/` – Kotlin Multiplatform library exposing the `Matrix` API to JVM and Kotlin/Native.
-- `matrixlib/src/commonMain` – shared Kotlin API surface and error hierarchy.
-- `matrixlib/src/jvmMain` – JVM implementation backed by JNI.
-- `matrixlib/src/nativeMain` – Kotlin/Native implementation using cinterop.
+## Table of contents
+1. [Project layout](#project-layout)
+2. [Requirements](#requirements)
+3. [Generate Gradle wrapper (8.9)](#generate-gradle-wrapper-89)
+   - [Bootstrap method if your build scripts fail to configure](#bootstrap-method-if-your-build-scripts-fail-to-configure)
+4. [Build native libraries (C++)](#build-native-libraries-c)
+5. [Run tests](#run-tests)
+6. [Benchmarks (JNI/C++ vs pure Kotlin)](#benchmarks-jniC-vs-pure-kotlin)
+7. [Clean builds](#clean-builds)
+8. [Troubleshooting](#troubleshooting)
+9. [Minimal usage (JVM)](#minimal-usage-jvm)
+10. [License](#license)
 
-## Prerequisites
+---
 
-Ensure the following tools are available:
+## Project layout
 
-1. **CMake ≥ 3.15** with a C++17-compatible compiler toolchain (clang or gcc on Linux/macOS).
-2. **Gradle** installed system-wide (this repository deliberately avoids committing the Gradle wrapper).
-3. **Kotlin Multiplatform toolchain** available via Gradle (standard Kotlin plugins will be downloaded when Gradle runs).
+native/ # C++ core, public C header, JNI shim, CMake project
+matrixlib/ # Kotlin Multiplatform library (common + jvm + native targets)
+benchmarks/ # JVM benchmark app (pure Kotlin vs JNI/C++)
 
-> Tip: on a fresh machine run `cmake --version` and `gradle --version` to verify the toolchain before building.
 
-## Build the native libraries
+---
 
-The native C++ core is compiled once and reused by all Gradle tasks.
+## Requirements
 
+- **CMake ≥ 3.15** and a **C++17** compiler (GCC/Clang on Linux/macOS; MSVC on Windows).
+- **Java 17+**.
+- **Gradle 8.9** (use the wrapper; see below).
+
+Sanity checks:
 ```bash
-cmake -S native -B native/build
-cmake --build native/build
-```
+cmake --version
+g++ --version           # or: clang++ --version
+java -version
 
-This produces:
+Generate Gradle wrapper (8.9)
 
-- `native/build/lib/libmatrix.*`
-- `native/build/lib/libmatrix_jni.*`
+    Recommended: use the wrapper for everything (./gradlew ...).
 
-By default the build uses the host triplet (tested on Linux and macOS). Clean the build directory with `rm -rf native/build` if you need to rebuild from scratch.
+Standard way (requires a working system Gradle):
 
-## Run the test suites
+gradle wrapper --gradle-version 8.9
+chmod +x gradlew
+./gradlew --version
 
-Gradle tasks depend on the native build directory above. From the repository root:
+Bootstrap method if your build scripts fail to configure
 
-1. **JVM tests** (loads the JNI bridge):
-   ```bash
-   gradle :matrixlib:jvmTest
-   ```
-2. **Kotlin/Native tests** for the Linux target:
-   ```bash
-   gradle :matrixlib:linuxX64Test
-   ```
+If gradle wrapper crashes during project configuration, bootstrap the wrapper without touching your existing build:
 
-The Native target can be changed (e.g. `macosX64Test`) if the corresponding compiler is installed. Tests expect the native libraries in `native/build/lib`; ensure the native build step succeeded first.
+# From repo root
 
-## Usage example
+# 1) Create minimal temporary build files:
+cat > wrapper.settings.gradle.kts <<'EOF'
+rootProject.name = "wrapper-bootstrap"
+EOF
 
-```kotlin
-val a = Matrix(2, 3, doubleArrayOf(/* row-major values */))
-val b = Matrix(3, 2, doubleArrayOf(/* row-major values */))
-val c = a.multiply(b)
-println(c.toArray().contentToString())
-a.close(); b.close(); c.close()
-```
+cat > wrapper.build.gradle.kts <<'EOF'
+tasks.register<Wrapper>("wrapper") {
+    gradleVersion = "8.9"
+    distributionType = Wrapper.DistributionType.ALL
+}
+EOF
 
-Each `Matrix` owns a native buffer and must be closed when no longer needed. Operations validate
-shapes and throw Kotlin exceptions when the underlying native code reports errors. The native
-implementation pads inputs to the nearest power of two and applies Strassen's algorithm to keep
-asymptotic complexity below the naïve cubic approach while still supporting arbitrary matrix sizes.
+# 2) Run wrapper task using the temporary files:
+gradle --settings-file wrapper.settings.gradle.kts \
+       --build-file wrapper.build.gradle.kts \
+       wrapper
+
+# 3) Clean up and finalize:
+rm wrapper.settings.gradle.kts wrapper.build.gradle.kts
+chmod +x gradlew
+./gradlew --version
+
+You now have:
+
+gradlew
+gradlew.bat
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+
+Build native libraries (C++)
+
+From repo root:
+
+cmake -S . -B native/build -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build --config Release
+
+Artifacts:
+
+native/build/lib/libmatrix.*        # C++ core
+native/build/lib/libmatrix_jni.*    # JNI bridge
+
+If you moved/renamed the repo and see a cache mismatch, rebuild from scratch:
+
+rm -rf native/build
+cmake -S . -B native/build -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build --config Release
+
+Run tests
+
+All test tasks rely on the native libs from native/build/lib.
+
+./gradlew :matrixlib:jvmTest \
+          :matrixlib:linuxX64Test \
+          -Ddev.demo.matrix.libdir="$PWD/native/build/lib"
+
+Notes:
+
+    On macOS, use :matrixlib:macosX64Test or :matrixlib:macosArm64Test depending on the toolchain.
+
+    The system property dev.demo.matrix.libdir points the JVM to libmatrix_jni.*.
+
+Benchmarks (JNI/C++ vs pure Kotlin)
+
+The benchmark compares JNI/C++ against a simple, cache-aware pure Kotlin O(n^3) baseline.
+
+Example:
+
+./gradlew :benchmarks:run \
+  -Ddev.demo.matrix.libdir="$PWD/native/build/lib" \
+  --args="--sizes=1024,1536 --iterations=3 --warmups=1 --impl=both"
+
+Arguments:
+
+    --sizes=768,1024,1536,... comma-separated square sizes (use ≥1024 to amortize JNI/JIT).
+
+    --iterations=N timed iterations per size (default: 3).
+
+    --warmups=N warmups per size (default: 1).
+
+    --impl=both|native|kotlin which implementation(s) to time.
+
+Tips:
+
+    Close background apps, keep the machine on AC power, and pin CPU frequency for more stable numbers.
+
+Clean builds
+
+./gradlew clean
+rm -rf native/build
+
+Troubleshooting
+
+JNI lib not found
+
+    Pass the correct libdir: -Ddev.demo.matrix.libdir="$PWD/native/build/lib".
+
+    Confirm native/build/lib contains libmatrix_jni.*.
+
+“Could not find or load main class dev.demo.matrix.bench.BenchMainKt”
+
+    Build before run:
+
+    ./gradlew :benchmarks:clean :benchmarks:build :benchmarks:run \
+      -Ddev.demo.matrix.libdir="$PWD/native/build/lib"
+
+Gradle Kotlin DSL: java.io.File.pathSeparator unresolved
+
+    In the Gradle script:
+
+    import java.io.File as JFile
+    // then use: JFile.pathSeparator
+
+CMake cache/source mismatch
+
+    Rebuild native:
+
+    rm -rf native/build
+    cmake -S . -B native/build -DCMAKE_BUILD_TYPE=Release
+    cmake --build native/build --config Release
+
+DefaultArtifactPublicationSet during configuration
+
+    Remove legacy maven plugin usage; use maven-publish when publishing is needed.
+
+Minimal usage (JVM)
+
+import dev.demo.matrix.Matrix
+
+fun example() {
+    val a = Matrix(2, 3, doubleArrayOf(1.0, 2.0, 3.0,  4.0, 5.0, 6.0)) // row-major
+    val b = Matrix(3, 2, doubleArrayOf(7.0, 8.0,  9.0, 10.0,  11.0, 12.0))
+    val c = a.multiply(b)
+    println(c.toArray().contentToString())
+    a.close(); b.close(); c.close()
+}
+
+Exceptions:
+
+    NativeShapeException for shape mismatches
+
+    IllegalStateException for invalid/closed handles
+
+    RuntimeException for allocation/unknown errors
+
+License
+
+MIT (or your project’s chosen license).
+
