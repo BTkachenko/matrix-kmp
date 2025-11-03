@@ -1,2 +1,9 @@
 *.bin
 /.gradle
+/build
+/gradle
+gradlew
+gradlew.bat
+matrixlib/build
+matrixlib/.gradle
+native/build
