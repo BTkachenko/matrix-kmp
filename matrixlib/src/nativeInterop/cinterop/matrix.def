@@ -1,2 +1,4 @@
-headers = ../../../native/include/matrix_c.h
-linkerOpts = -lmatrix
+headers = matrix_c.h
+package = matrix
+compilerOpts = -I$projectDir/../../../native/include
+linkerOpts = -L$projectDir/../../../native/build/lib -lmatrix

@@ -1,2 +1,2 @@
 rootProject.name = "matrix-kmp"
-include("matrixlib")
+include(":matrixlib")
